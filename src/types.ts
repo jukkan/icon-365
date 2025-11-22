@@ -22,6 +22,7 @@ export interface IconFile {
   rawUrl: string;
   isLegacy: boolean;
   extension: string;
+  productName: string;
 }
 
 export interface CategoryCount {

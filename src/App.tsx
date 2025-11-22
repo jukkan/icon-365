@@ -1,8 +1,28 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { IconFile } from './types';
-import { fetchIcons, getCategories, filterIcons } from './api';
+import { fetchIcons, getCategories, searchIcons, SearchResult } from './api';
+import type { FuseResultMatch } from 'fuse.js';
 
 const PAGE_SIZE = 50;
+
+// URL state helpers
+function getUrlParams() {
+  const params = new URLSearchParams(window.location.search);
+  return {
+    search: params.get('q') || '',
+    category: params.get('category') || null,
+  };
+}
+
+function setUrlParams(search: string, category: string | null) {
+  const params = new URLSearchParams();
+  if (search) params.set('q', search);
+  if (category) params.set('category', category);
+  const newUrl = params.toString()
+    ? `${window.location.pathname}?${params.toString()}`
+    : window.location.pathname;
+  window.history.replaceState({}, '', newUrl);
+}
 
 // Header Component
 function Header() {
@@ -35,11 +55,9 @@ function SearchBar({
         onChange={(e) => onChange(e.target.value)}
         className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-ms-blue focus:border-transparent"
       />
-      {value && (
-        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-gray-500">
-          {resultCount} results
-        </span>
-      )}
+      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-gray-500">
+        {resultCount} {resultCount === 1 ? 'result' : 'results'}
+      </span>
     </div>
   );
 }
@@ -85,12 +103,52 @@ function CategoryTabs({
   );
 }
 
-// Icon Card Component with retry logic
-function IconCard({ icon }: { icon: IconFile }) {
+// Skeleton loader for icon cards
+function IconCardSkeleton() {
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 p-4 animate-pulse">
+      <div className="aspect-square bg-gray-200 rounded-md mb-3" />
+      <div className="space-y-2">
+        <div className="h-4 bg-gray-200 rounded w-3/4" />
+        <div className="h-3 bg-gray-200 rounded w-1/2" />
+        <div className="h-8 bg-gray-200 rounded mt-2" />
+      </div>
+    </div>
+  );
+}
+
+// Icon Card Component with intersection observer
+function IconCard({
+  icon,
+  matches
+}: {
+  icon: IconFile;
+  matches?: readonly FuseResultMatch[];
+}) {
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
+  const [isVisible, setIsVisible] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const imgRef = useRef<HTMLImageElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '100px' }
+    );
+
+    if (containerRef.current) {
+      observer.observe(containerRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, []);
 
   const sizeKB = (icon.size / 1024).toFixed(1);
 
@@ -104,7 +162,6 @@ function IconCard({ icon }: { icon: IconFile }) {
 
   const handleError = () => {
     if (retryCount < 1) {
-      // Retry once after 2 seconds
       setTimeout(() => {
         setRetryCount(prev => prev + 1);
         if (imgRef.current) {
@@ -116,10 +173,41 @@ function IconCard({ icon }: { icon: IconFile }) {
     }
   };
 
+  // Highlight matching text
+  const highlightText = (text: string, key: string) => {
+    if (!matches) return text;
+
+    const match = matches.find(m => m.key === key);
+    if (!match?.indices?.length) return text;
+
+    const parts: JSX.Element[] = [];
+    let lastIndex = 0;
+
+    match.indices.forEach(([start, end], i) => {
+      if (start > lastIndex) {
+        parts.push(<span key={`text-${i}`}>{text.slice(lastIndex, start)}</span>);
+      }
+      parts.push(
+        <mark key={`match-${i}`} className="bg-yellow-200 px-0.5 rounded">
+          {text.slice(start, end + 1)}
+        </mark>
+      );
+      lastIndex = end + 1;
+    });
+
+    if (lastIndex < text.length) {
+      parts.push(<span key="text-end">{text.slice(lastIndex)}</span>);
+    }
+
+    return <>{parts}</>;
+  };
+
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow">
+    <div ref={containerRef} className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow h-full">
       <div className="aspect-square flex items-center justify-center bg-gray-100 rounded-md mb-3 overflow-hidden">
-        {imageError ? (
+        {!isVisible ? (
+          <div className="w-full h-full bg-gray-100" />
+        ) : imageError ? (
           <div className="flex flex-col items-center text-gray-400">
             <svg className="w-8 h-8 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -131,7 +219,6 @@ function IconCard({ icon }: { icon: IconFile }) {
             ref={imgRef}
             src={icon.rawUrl}
             alt={icon.filename}
-            loading="lazy"
             onLoad={() => setImageLoaded(true)}
             onError={handleError}
             className={`max-w-full max-h-full object-contain transition-opacity duration-200 ${
@@ -142,7 +229,7 @@ function IconCard({ icon }: { icon: IconFile }) {
       </div>
       <div className="space-y-2">
         <p className="text-sm font-medium text-gray-900 truncate" title={icon.filename}>
-          {icon.filename}
+          {highlightText(icon.filename, 'filename')}
         </p>
         <div className="flex items-center justify-between">
           <span className="text-xs text-gray-500">
@@ -165,17 +252,17 @@ function IconCard({ icon }: { icon: IconFile }) {
   );
 }
 
-// Icon Grid Component with pagination
+// Icon Grid Component
 function IconGrid({
-  icons,
+  results,
   visibleCount,
   onLoadMore,
 }: {
-  icons: IconFile[];
+  results: SearchResult[];
   visibleCount: number;
   onLoadMore: () => void;
 }) {
-  if (icons.length === 0) {
+  if (results.length === 0) {
     return (
       <div className="text-center py-12">
         <p className="text-gray-500">No icons found</p>
@@ -183,27 +270,27 @@ function IconGrid({
     );
   }
 
-  const visibleIcons = icons.slice(0, visibleCount);
-  const hasMore = visibleCount < icons.length;
+  const visibleResults = results.slice(0, visibleCount);
+  const hasMore = visibleCount < results.length;
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-        {visibleIcons.map((icon) => (
-          <IconCard key={icon.path} icon={icon} />
+        {visibleResults.map((result) => (
+          <IconCard key={result.item.path} icon={result.item} matches={result.matches} />
         ))}
       </div>
 
       <div className="text-center space-y-3">
         <p className="text-sm text-gray-600">
-          Showing {visibleIcons.length} of {icons.length} icons
+          Showing {visibleResults.length} of {results.length} icons
         </p>
         {hasMore && (
           <button
             onClick={onLoadMore}
             className="px-6 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
           >
-            Load {Math.min(PAGE_SIZE, icons.length - visibleCount)} more
+            Load {Math.min(PAGE_SIZE, results.length - visibleCount)} more
           </button>
         )}
       </div>
@@ -233,12 +320,15 @@ function Footer() {
   );
 }
 
-// Loading State Component
+// Loading State with Skeletons
 function LoadingState() {
   return (
-    <div className="flex flex-col items-center justify-center py-12">
-      <div className="w-12 h-12 border-4 border-ms-blue border-t-transparent rounded-full animate-spin mb-4" />
-      <p className="text-gray-600">Loading icons...</p>
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <IconCardSkeleton key={i} />
+        ))}
+      </div>
     </div>
   );
 }
@@ -247,12 +337,18 @@ function LoadingState() {
 function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <div className="text-center py-12">
-      <p className="text-red-600 mb-4">{message}</p>
+      <div className="mb-4">
+        <svg className="w-12 h-12 mx-auto text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+      </div>
+      <p className="text-gray-700 mb-2 font-medium">Failed to load icons</p>
+      <p className="text-gray-500 mb-4 text-sm">{message}</p>
       <button
         onClick={onRetry}
         className="px-4 py-2 bg-ms-blue text-white rounded hover:bg-ms-blue-dark transition-colors"
       >
-        Retry
+        Try Again
       </button>
     </div>
   );
@@ -263,28 +359,36 @@ function App() {
   const [icons, setIcons] = useState<IconFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+
+  // Initialize from URL params
+  const urlParams = getUrlParams();
+  const [searchQuery, setSearchQuery] = useState(urlParams.search);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(urlParams.category);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
-  const loadIcons = async () => {
+  const loadIcons = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const data = await fetchIcons();
       setIcons(data);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load icons');
+      const message = e instanceof Error ? e.message : 'Failed to load icons';
+      setError(message);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadIcons();
-  }, []);
+  }, [loadIcons]);
 
-  // Reset visible count when search or category changes
+  // Update URL when search/category changes
+  useEffect(() => {
+    setUrlParams(searchQuery, selectedCategory);
+  }, [searchQuery, selectedCategory]);
+
   const handleSearchChange = (query: string) => {
     setSearchQuery(query);
     setVisibleCount(PAGE_SIZE);
@@ -299,14 +403,20 @@ function App() {
     setVisibleCount(prev => prev + PAGE_SIZE);
   };
 
-  const categories = getCategories(icons);
-  const filteredIcons = filterIcons(icons, searchQuery, selectedCategory);
+  const categories = useMemo(() => getCategories(icons), [icons]);
+  const searchResults = useMemo(
+    () => searchIcons(icons, searchQuery, selectedCategory),
+    [icons, searchQuery, selectedCategory]
+  );
 
   // Calculate counts per category
-  const iconCounts: Record<string, number> = {};
-  icons.forEach((icon) => {
-    iconCounts[icon.category] = (iconCounts[icon.category] || 0) + 1;
-  });
+  const iconCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    icons.forEach((icon) => {
+      counts[icon.category] = (counts[icon.category] || 0) + 1;
+    });
+    return counts;
+  }, [icons]);
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -317,7 +427,7 @@ function App() {
           <SearchBar
             value={searchQuery}
             onChange={handleSearchChange}
-            resultCount={filteredIcons.length}
+            resultCount={searchResults.length}
           />
 
           {!loading && !error && (
@@ -333,7 +443,7 @@ function App() {
           {error && <ErrorState message={error} onRetry={loadIcons} />}
           {!loading && !error && (
             <IconGrid
-              icons={filteredIcons}
+              results={searchResults}
               visibleCount={visibleCount}
               onLoadMore={handleLoadMore}
             />
