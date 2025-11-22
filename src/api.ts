@@ -2,8 +2,10 @@ import Fuse, { IFuseOptions, FuseResultMatch } from 'fuse.js';
 import { GitHubTreeResponse, IconFile, CachedData } from './types';
 
 const GITHUB_API_URL = 'https://api.github.com/repos/loryanstrant/MicrosoftCloudLogos/git/trees/main?recursive=1';
+const GITHUB_COMMITS_URL = 'https://api.github.com/repos/loryanstrant/MicrosoftCloudLogos/commits';
 const RAW_CONTENT_BASE = 'https://raw.githubusercontent.com/loryanstrant/MicrosoftCloudLogos/main/';
 const CACHE_KEY = 'icon365-cache';
+const COMMITS_CACHE_KEY = 'icon365-commits-cache';
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours in ms
 
 function isImageFile(path: string): boolean {
@@ -188,12 +190,17 @@ export interface SearchResult {
 export function searchIcons(
   icons: IconFile[],
   searchQuery: string,
-  selectedCategory: string | null
+  selectedCategory: string | null,
+  fileTypeFilter: 'all' | 'png' | 'svg' = 'all'
 ): SearchResult[] {
   let filtered = icons;
 
   if (selectedCategory) {
     filtered = filtered.filter(icon => icon.category === selectedCategory);
+  }
+
+  if (fileTypeFilter !== 'all') {
+    filtered = filtered.filter(icon => icon.extension === fileTypeFilter);
   }
 
   if (!searchQuery.trim()) {
@@ -202,4 +209,112 @@ export function searchIcons(
 
   const fuse = new Fuse(filtered, fuseOptions);
   return fuse.search(searchQuery);
+}
+
+// Recent commits functionality
+interface GitHubCommit {
+  sha: string;
+  commit: {
+    message: string;
+    author: {
+      date: string;
+    };
+  };
+  files?: Array<{
+    filename: string;
+    status: string;
+  }>;
+}
+
+export interface RecentChange {
+  path: string;
+  date: string;
+  message: string;
+}
+
+function getCachedCommits(): Map<string, RecentChange> | null {
+  try {
+    const cached = localStorage.getItem(COMMITS_CACHE_KEY);
+    if (!cached) return null;
+
+    const data = JSON.parse(cached);
+    const now = Date.now();
+
+    if (now - data.timestamp > CACHE_TTL) {
+      localStorage.removeItem(COMMITS_CACHE_KEY);
+      return null;
+    }
+
+    return new Map(data.changes);
+  } catch {
+    return null;
+  }
+}
+
+function setCachedCommits(changes: Map<string, RecentChange>): void {
+  try {
+    const data = {
+      timestamp: Date.now(),
+      changes: Array.from(changes.entries()),
+    };
+    localStorage.setItem(COMMITS_CACHE_KEY, JSON.stringify(data));
+  } catch (e) {
+    console.warn('Failed to cache commits:', e);
+  }
+}
+
+export async function fetchRecentChanges(): Promise<Map<string, RecentChange>> {
+  const cached = getCachedCommits();
+  if (cached) {
+    console.log('Using cached commit data');
+    return cached;
+  }
+
+  console.log('Fetching recent commits from GitHub API...');
+
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const since = thirtyDaysAgo.toISOString();
+
+  const changes = new Map<string, RecentChange>();
+
+  try {
+    // Fetch commits from last 30 days
+    const response = await fetchWithRetry(
+      `${GITHUB_COMMITS_URL}?since=${since}&per_page=100`
+    );
+    const commits: GitHubCommit[] = await response.json();
+
+    // For each commit, fetch the files changed
+    for (const commit of commits.slice(0, 20)) { // Limit to 20 commits to avoid rate limiting
+      try {
+        const detailResponse = await fetch(
+          `${GITHUB_COMMITS_URL}/${commit.sha}`
+        );
+        if (detailResponse.ok) {
+          const detail: GitHubCommit = await detailResponse.json();
+          if (detail.files) {
+            for (const file of detail.files) {
+              if (isImageFile(file.filename) && !changes.has(file.filename)) {
+                changes.set(file.filename, {
+                  path: file.filename,
+                  date: commit.commit.author.date,
+                  message: commit.commit.message.split('\n')[0],
+                });
+              }
+            }
+          }
+        }
+      } catch {
+        // Skip individual commit errors
+      }
+    }
+
+    setCachedCommits(changes);
+    console.log(`Found ${changes.size} recently changed icons`);
+    return changes;
+  } catch (e) {
+    console.warn('Failed to fetch recent changes:', e);
+    return new Map();
+  }
 }
