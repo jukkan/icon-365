@@ -1,0 +1,37 @@
+{
+  "name": "icon-365",
+  "version": "1.0.0",
+  "description": "Visual browser for Microsoft Cloud Logos community repo",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jukkan/icon-365"
+  },
+  "keywords": [
+    "microsoft",
+    "icons",
+    "azure",
+    "logos"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.17",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^4.1.17",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3"
+  }
+}
