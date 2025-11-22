@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { IconFile } from './types';
-import { fetchIcons, getCategories, searchIcons, SearchResult, fetchRecentChanges, RecentChange } from './api';
+import { fetchIcons, getCategories, searchIcons, SearchResult, fetchRecentChanges, RecentChange, getSearchSuggestions, getGitHubFileUrl } from './api';
 import type { FuseResultMatch } from 'fuse.js';
+import JSZip from 'jszip';
 
 const PAGE_SIZE = 50;
 
@@ -65,6 +66,231 @@ function Header({ darkMode, onToggleDarkMode }: { darkMode: boolean; onToggleDar
         </button>
       </div>
     </header>
+  );
+}
+
+// Preview Modal Component
+function PreviewModal({
+  icon,
+  onClose,
+  onPrevious,
+  onNext,
+  hasPrevious,
+  hasNext,
+  darkMode,
+}: {
+  icon: IconFile;
+  onClose: () => void;
+  onPrevious: () => void;
+  onNext: () => void;
+  hasPrevious: boolean;
+  hasNext: boolean;
+  darkMode: boolean;
+}) {
+  const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
+  const [imageLoaded, setImageLoaded] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+      if (e.key === 'ArrowLeft' && hasPrevious) onPrevious();
+      if (e.key === 'ArrowRight' && hasNext) onNext();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose, onPrevious, onNext, hasPrevious, hasNext]);
+
+  const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget;
+    setDimensions({ width: img.naturalWidth, height: img.naturalHeight });
+    setImageLoaded(true);
+  };
+
+  const handleDownload = () => {
+    const link = document.createElement('a');
+    link.href = icon.rawUrl;
+    link.download = icon.filename;
+    link.target = '_blank';
+    link.click();
+  };
+
+  const sizeKB = (icon.size / 1024).toFixed(1);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div
+        className={`relative w-full max-w-3xl rounded-xl shadow-2xl animate-fade-in ${
+          darkMode ? 'bg-dark-surface' : 'bg-white'
+        }`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Close button */}
+        <button
+          onClick={onClose}
+          className={`absolute top-4 right-4 p-2 rounded-lg z-10 transition-colors ${
+            darkMode ? 'hover:bg-dark-border text-dark-text' : 'hover:bg-gray-100 text-gray-600'
+          }`}
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+
+        {/* Navigation arrows */}
+        {hasPrevious && (
+          <button
+            onClick={onPrevious}
+            className={`absolute left-4 top-1/2 -translate-y-1/2 p-3 rounded-full transition-colors ${
+              darkMode ? 'bg-dark-border hover:bg-dark-text/20 text-dark-text' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+            }`}
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+        )}
+        {hasNext && (
+          <button
+            onClick={onNext}
+            className={`absolute right-4 top-1/2 -translate-y-1/2 p-3 rounded-full transition-colors ${
+              darkMode ? 'bg-dark-border hover:bg-dark-text/20 text-dark-text' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+            }`}
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        )}
+
+        {/* Image preview */}
+        <div className={`aspect-square max-h-96 flex items-center justify-center p-8 rounded-t-xl ${
+          darkMode ? 'bg-dark-border' : 'bg-gray-50'
+        }`}>
+          <img
+            src={icon.rawUrl}
+            alt={icon.filename}
+            onLoad={handleImageLoad}
+            className={`max-w-full max-h-full object-contain transition-opacity ${
+              imageLoaded ? 'opacity-100' : 'opacity-0'
+            }`}
+          />
+        </div>
+
+        {/* Details */}
+        <div className="p-6 space-y-4">
+          <div>
+            <h3 className={`text-lg font-semibold ${darkMode ? 'text-dark-text' : 'text-gray-900'}`}>
+              {icon.filename}
+            </h3>
+            <p className={`text-sm font-mono ${darkMode ? 'text-dark-text-secondary' : 'text-gray-500'}`}>
+              {icon.path}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-4 text-sm">
+            <div>
+              <span className={darkMode ? 'text-dark-text-secondary' : 'text-gray-500'}>Size: </span>
+              <span className={darkMode ? 'text-dark-text' : 'text-gray-900'}>{sizeKB} KB</span>
+            </div>
+            {dimensions && (
+              <div>
+                <span className={darkMode ? 'text-dark-text-secondary' : 'text-gray-500'}>Dimensions: </span>
+                <span className={darkMode ? 'text-dark-text' : 'text-gray-900'}>{dimensions.width} × {dimensions.height}</span>
+              </div>
+            )}
+            <div>
+              <span className={darkMode ? 'text-dark-text-secondary' : 'text-gray-500'}>Type: </span>
+              <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                icon.extension === 'svg'
+                  ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
+                  : 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+              }`}>
+                {icon.extension.toUpperCase()}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <button
+              onClick={handleDownload}
+              className="flex-1 px-4 py-2 bg-ms-blue text-white rounded-lg hover:bg-ms-blue-dark transition-colors press-effect"
+            >
+              Download
+            </button>
+            <a
+              href={getGitHubFileUrl(icon.path)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
+                darkMode
+                  ? 'bg-dark-border hover:bg-dark-text/20 text-dark-text'
+                  : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+              }`}
+            >
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+              </svg>
+              View on GitHub
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Floating Action Bar for multi-select
+function FloatingActionBar({
+  selectedCount,
+  onDownloadZip,
+  onCopyUrls,
+  onClear,
+  darkMode,
+}: {
+  selectedCount: number;
+  onDownloadZip: () => void;
+  onCopyUrls: () => void;
+  onClear: () => void;
+  darkMode: boolean;
+}) {
+  if (selectedCount === 0) return null;
+
+  return (
+    <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-40 px-6 py-3 rounded-full shadow-lg flex items-center gap-4 animate-slide-up ${
+      darkMode ? 'bg-dark-surface border border-dark-border' : 'bg-white border border-gray-200'
+    }`}>
+      <span className={`font-medium ${darkMode ? 'text-dark-text' : 'text-gray-700'}`}>
+        ✓ {selectedCount} selected
+      </span>
+      <div className="h-6 w-px bg-gray-300 dark:bg-dark-border" />
+      <button
+        onClick={onDownloadZip}
+        className="px-3 py-1.5 bg-ms-blue text-white rounded-lg text-sm hover:bg-ms-blue-dark transition-colors press-effect"
+      >
+        Download ZIP
+      </button>
+      <button
+        onClick={onCopyUrls}
+        className={`px-3 py-1.5 rounded-lg text-sm transition-colors press-effect ${
+          darkMode
+            ? 'bg-dark-border hover:bg-dark-text/20 text-dark-text'
+            : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+        }`}
+      >
+        Copy URLs
+      </button>
+      <button
+        onClick={onClear}
+        className={`px-3 py-1.5 rounded-lg text-sm transition-colors press-effect ${
+          darkMode
+            ? 'hover:bg-dark-border text-dark-text-secondary'
+            : 'hover:bg-gray-100 text-gray-500'
+        }`}
+      >
+        Clear
+      </button>
+    </div>
   );
 }
 
@@ -237,14 +463,18 @@ function IconCard({
   matches,
   recentChange,
   isSelected,
+  isMultiSelected,
   onSelect,
+  onMultiSelect,
   darkMode,
 }: {
   icon: IconFile;
   matches?: readonly FuseResultMatch[];
   recentChange?: RecentChange;
   isSelected?: boolean;
+  isMultiSelected?: boolean;
   onSelect?: () => void;
+  onMultiSelect?: () => void;
   darkMode: boolean;
 }) {
   const [imageLoaded, setImageLoaded] = useState(false);
@@ -327,12 +557,23 @@ function IconCard({
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
+  const handleClick = (e: React.MouseEvent) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      onMultiSelect?.();
+    } else {
+      onSelect?.();
+    }
+  };
+
   return (
     <div
       ref={containerRef}
-      onClick={onSelect}
+      onClick={handleClick}
       className={`rounded-lg border p-4 transition-all duration-200 h-full cursor-pointer hover-lift ${
-        isSelected
+        isMultiSelected
+          ? 'border-ms-green ring-2 ring-ms-green'
+          : isSelected
           ? 'border-ms-blue ring-2 ring-ms-blue'
           : darkMode
           ? 'bg-dark-surface border-dark-border hover:shadow-fluent-lg'
@@ -342,6 +583,13 @@ function IconCard({
       <div className={`relative aspect-square flex items-center justify-center rounded-md mb-3 overflow-hidden ${
         darkMode ? 'bg-dark-border' : 'bg-gray-100'
       }`}>
+        {isMultiSelected && (
+          <div className="absolute top-1 left-1 bg-ms-green text-white rounded-full w-5 h-5 flex items-center justify-center z-10">
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+        )}
         {recentChange && (
           <div
             className="absolute top-1 right-1 bg-ms-green text-white text-xs px-1.5 py-0.5 rounded font-medium z-10"
@@ -352,7 +600,7 @@ function IconCard({
         )}
 
         {!isVisible ? (
-          <div className="w-full h-full" />
+          <div className="w-full h-full skeleton-shimmer" />
         ) : imageError ? (
           <div className={`flex flex-col items-center ${darkMode ? 'text-dark-text-secondary' : 'text-gray-400'}`}>
             <svg className="w-8 h-8 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -365,10 +613,12 @@ function IconCard({
             ref={imgRef}
             src={icon.rawUrl}
             alt={icon.filename}
+            loading="lazy"
+            decoding="async"
             onLoad={() => setImageLoaded(true)}
             onError={handleError}
-            className={`max-w-full max-h-full object-contain ${
-              imageLoaded ? 'animate-fade-in' : 'opacity-0'
+            className={`max-w-full max-h-full object-contain transition-all duration-300 ${
+              imageLoaded ? 'opacity-100 blur-0' : 'opacity-50 blur-sm scale-95'
             }`}
           />
         )}
@@ -411,14 +661,18 @@ function IconListItem({
   icon,
   recentChange,
   isSelected,
+  isMultiSelected,
   onSelect,
+  onMultiSelect,
   darkMode,
 }: {
   icon: IconFile;
   matches?: readonly FuseResultMatch[];
   recentChange?: RecentChange;
   isSelected?: boolean;
+  isMultiSelected?: boolean;
   onSelect?: () => void;
+  onMultiSelect?: () => void;
   darkMode: boolean;
 }) {
   const sizeKB = (icon.size / 1024).toFixed(1);
@@ -436,19 +690,37 @@ function IconListItem({
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
+  const handleClick = (e: React.MouseEvent) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      onMultiSelect?.();
+    } else {
+      onSelect?.();
+    }
+  };
+
   return (
     <div
-      onClick={onSelect}
+      onClick={handleClick}
       className={`border rounded-lg p-3 flex items-center gap-4 cursor-pointer transition-all duration-200 ${
-        isSelected
+        isMultiSelected
+          ? 'border-ms-green ring-1 ring-ms-green'
+          : isSelected
           ? 'border-ms-blue ring-1 ring-ms-blue'
           : darkMode
           ? 'bg-dark-surface border-dark-border hover:shadow-fluent'
           : 'bg-white border-gray-200 hover:shadow-fluent'
       }`}
     >
+      {isMultiSelected && (
+        <div className="w-5 h-5 bg-ms-green text-white rounded-full flex items-center justify-center flex-shrink-0">
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+          </svg>
+        </div>
+      )}
       <div className={`w-12 h-12 flex-shrink-0 flex items-center justify-center rounded ${darkMode ? 'bg-dark-border' : 'bg-gray-50'}`}>
-        <img src={icon.rawUrl} alt={icon.filename} className="max-w-full max-h-full object-contain" loading="lazy" />
+        <img src={icon.rawUrl} alt={icon.filename} className="max-w-full max-h-full object-contain" loading="lazy" decoding="async" />
       </div>
       <div className="flex-1 min-w-0">
         <p className={`text-sm font-medium truncate ${darkMode ? 'text-dark-text' : 'text-gray-900'}`}>{icon.filename}</p>
@@ -466,6 +738,20 @@ function IconListItem({
           {icon.extension.toUpperCase()}
         </span>
         <span className={`text-xs w-16 text-right ${darkMode ? 'text-dark-text-secondary' : 'text-gray-500'}`}>{sizeKB} KB</span>
+        <a
+          href={getGitHubFileUrl(icon.path)}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className={`p-1.5 rounded transition-colors ${
+            darkMode ? 'hover:bg-dark-border text-dark-text-secondary' : 'hover:bg-gray-100 text-gray-500'
+          }`}
+          title="View on GitHub"
+        >
+          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+          </svg>
+        </a>
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -480,9 +766,23 @@ function IconListItem({
   );
 }
 
-// Empty State Component
-function EmptyState({ searchQuery, darkMode }: { searchQuery: string; darkMode: boolean }) {
-  const suggestions = ['Teams', 'Azure', 'Office', 'SharePoint', 'OneDrive', 'Outlook'];
+// Empty State Component with smart suggestions
+function EmptyState({
+  searchQuery,
+  suggestion,
+  suggestedCategory,
+  onSuggestionClick,
+  onCategoryClick,
+  darkMode,
+}: {
+  searchQuery: string;
+  suggestion: string | null;
+  suggestedCategory: string | null;
+  onSuggestionClick: (term: string) => void;
+  onCategoryClick: (category: string) => void;
+  darkMode: boolean;
+}) {
+  const defaultSuggestions = ['Teams', 'Azure', 'Office', 'SharePoint', 'OneDrive', 'Outlook'];
 
   return (
     <div className="text-center py-12 animate-fade-in">
@@ -492,13 +792,45 @@ function EmptyState({ searchQuery, darkMode }: { searchQuery: string; darkMode: 
       <p className={`text-lg font-medium mb-2 ${darkMode ? 'text-dark-text' : 'text-gray-700'}`}>
         No icons found for "{searchQuery}"
       </p>
-      <p className={`mb-4 ${darkMode ? 'text-dark-text-secondary' : 'text-gray-500'}`}>
-        Try searching for something else
-      </p>
-      <div className="flex flex-wrap justify-center gap-2">
-        {suggestions.map((term) => (
-          <span
+
+      {/* Smart suggestions */}
+      {suggestion && (
+        <p className={`mb-3 ${darkMode ? 'text-dark-text-secondary' : 'text-gray-500'}`}>
+          Did you mean:{' '}
+          <button
+            onClick={() => onSuggestionClick(suggestion.replace(/\.(png|svg)$/i, ''))}
+            className="text-ms-blue hover:underline font-medium"
+          >
+            {suggestion}
+          </button>
+          ?
+        </p>
+      )}
+
+      {suggestedCategory && (
+        <p className={`mb-3 ${darkMode ? 'text-dark-text-secondary' : 'text-gray-500'}`}>
+          Try browsing{' '}
+          <button
+            onClick={() => onCategoryClick(suggestedCategory)}
+            className="text-ms-blue hover:underline font-medium"
+          >
+            {suggestedCategory}
+          </button>
+          {' '}instead
+        </p>
+      )}
+
+      {!suggestion && !suggestedCategory && (
+        <p className={`mb-4 ${darkMode ? 'text-dark-text-secondary' : 'text-gray-500'}`}>
+          Try searching for something else
+        </p>
+      )}
+
+      <div className="flex flex-wrap justify-center gap-2 mt-4">
+        {defaultSuggestions.map((term) => (
+          <button
             key={term}
+            onClick={() => onSuggestionClick(term)}
             className={`px-3 py-1 rounded-full text-sm cursor-pointer transition-colors ${
               darkMode
                 ? 'bg-dark-surface text-dark-text hover:bg-dark-border'
@@ -506,7 +838,7 @@ function EmptyState({ searchQuery, darkMode }: { searchQuery: string; darkMode: 
             }`}
           >
             {term}
-          </span>
+          </button>
         ))}
       </div>
     </div>
@@ -588,8 +920,14 @@ function IconGrid({
   viewMode,
   selectedIndex,
   onSelect,
+  multiSelected,
+  onMultiSelect,
   darkMode,
   searchQuery,
+  suggestion,
+  suggestedCategory,
+  onSuggestionClick,
+  onCategoryClick,
 }: {
   results: SearchResult[];
   visibleCount: number;
@@ -598,11 +936,26 @@ function IconGrid({
   viewMode: ViewMode;
   selectedIndex: number;
   onSelect: (index: number) => void;
+  multiSelected: Set<string>;
+  onMultiSelect: (path: string) => void;
   darkMode: boolean;
   searchQuery: string;
+  suggestion: string | null;
+  suggestedCategory: string | null;
+  onSuggestionClick: (term: string) => void;
+  onCategoryClick: (category: string) => void;
 }) {
   if (results.length === 0) {
-    return <EmptyState searchQuery={searchQuery} darkMode={darkMode} />;
+    return (
+      <EmptyState
+        searchQuery={searchQuery}
+        suggestion={suggestion}
+        suggestedCategory={suggestedCategory}
+        onSuggestionClick={onSuggestionClick}
+        onCategoryClick={onCategoryClick}
+        darkMode={darkMode}
+      />
+    );
   }
 
   if (viewMode === 'compare') {
@@ -614,6 +967,9 @@ function IconGrid({
 
   return (
     <div className="space-y-6">
+      <p className={`text-xs ${darkMode ? 'text-dark-text-secondary' : 'text-gray-400'}`}>
+        Tip: Ctrl+Click to select multiple icons
+      </p>
       {viewMode === 'grid' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {visibleResults.map((result, index) => (
@@ -623,7 +979,9 @@ function IconGrid({
                 matches={result.matches}
                 recentChange={recentChanges.get(result.item.path)}
                 isSelected={index === selectedIndex}
+                isMultiSelected={multiSelected.has(result.item.path)}
                 onSelect={() => onSelect(index)}
+                onMultiSelect={() => onMultiSelect(result.item.path)}
                 darkMode={darkMode}
               />
             </div>
@@ -637,7 +995,9 @@ function IconGrid({
                 icon={result.item}
                 recentChange={recentChanges.get(result.item.path)}
                 isSelected={index === selectedIndex}
+                isMultiSelected={multiSelected.has(result.item.path)}
                 onSelect={() => onSelect(index)}
+                onMultiSelect={() => onMultiSelect(result.item.path)}
                 darkMode={darkMode}
               />
             </div>
@@ -739,8 +1099,33 @@ function App() {
   const [fileTypeFilter, setFileTypeFilter] = useState<FileTypeFilter>('all');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [selectedIndex, setSelectedIndex] = useState(-1);
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+  const [multiSelected, setMultiSelected] = useState<Set<string>>(new Set());
 
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Compute derived state first (before effects that use them)
+  const categories = useMemo(() => getCategories(icons), [icons]);
+  const searchResults = useMemo(
+    () => searchIcons(icons, searchQuery, selectedCategory, fileTypeFilter),
+    [icons, searchQuery, selectedCategory, fileTypeFilter]
+  );
+
+  const iconCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    icons.forEach((icon) => {
+      counts[icon.category] = (counts[icon.category] || 0) + 1;
+    });
+    return counts;
+  }, [icons]);
+
+  // Get search suggestions when no results
+  const { suggestion, suggestedCategory } = useMemo(() => {
+    if (searchResults.length > 0 || !searchQuery.trim()) {
+      return { suggestion: null, suggestedCategory: null };
+    }
+    return getSearchSuggestions(icons, searchQuery, selectedCategory);
+  }, [icons, searchQuery, selectedCategory, searchResults.length]);
 
   // Apply dark mode class to document
   useEffect(() => {
@@ -777,6 +1162,9 @@ function App() {
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't handle if modal is open (modal has its own handlers)
+      if (previewIndex !== null) return;
+
       if (e.key === '/' && document.activeElement !== searchInputRef.current) {
         e.preventDefault();
         searchInputRef.current?.focus();
@@ -817,12 +1205,7 @@ function App() {
             break;
           case 'Enter':
             if (selectedIndex >= 0 && searchResults[selectedIndex]) {
-              const icon = searchResults[selectedIndex].item;
-              const link = document.createElement('a');
-              link.href = icon.rawUrl;
-              link.download = icon.filename;
-              link.target = '_blank';
-              link.click();
+              setPreviewIndex(selectedIndex);
             }
             e.preventDefault();
             break;
@@ -836,7 +1219,76 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedIndex, visibleCount, viewMode]);
+  }, [selectedIndex, visibleCount, viewMode, previewIndex, searchResults]);
+
+  // Multi-select handlers
+  const handleMultiSelect = useCallback((path: string) => {
+    setMultiSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(path)) {
+        next.delete(path);
+      } else {
+        next.add(path);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleDownloadZip = useCallback(async () => {
+    if (multiSelected.size === 0) return;
+
+    const zip = new JSZip();
+    const selectedIcons = icons.filter(icon => multiSelected.has(icon.path));
+
+    for (const icon of selectedIcons) {
+      try {
+        const response = await fetch(icon.rawUrl);
+        const blob = await response.blob();
+        zip.file(icon.filename, blob);
+      } catch (e) {
+        console.error(`Failed to fetch ${icon.filename}:`, e);
+      }
+    }
+
+    const content = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(content);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'icons.zip';
+    link.click();
+    URL.revokeObjectURL(url);
+  }, [multiSelected, icons]);
+
+  const handleCopyUrls = useCallback(() => {
+    const selectedIcons = icons.filter(icon => multiSelected.has(icon.path));
+    const urls = selectedIcons.map(icon => icon.rawUrl).join('\n');
+    navigator.clipboard.writeText(urls);
+  }, [multiSelected, icons]);
+
+  const handleClearSelection = useCallback(() => {
+    setMultiSelected(new Set());
+  }, []);
+
+  // Modal handlers
+  const handleOpenPreview = useCallback((index: number) => {
+    setPreviewIndex(index);
+  }, []);
+
+  const handleClosePreview = useCallback(() => {
+    setPreviewIndex(null);
+  }, []);
+
+  const handlePreviousPreview = useCallback(() => {
+    if (previewIndex !== null && previewIndex > 0) {
+      setPreviewIndex(previewIndex - 1);
+    }
+  }, [previewIndex]);
+
+  const handleNextPreview = useCallback(() => {
+    if (previewIndex !== null && previewIndex < searchResults.length - 1) {
+      setPreviewIndex(previewIndex + 1);
+    }
+  }, [previewIndex, searchResults.length]);
 
   const handleSearchChange = (query: string) => {
     setSearchQuery(query);
@@ -859,20 +1311,6 @@ function App() {
   const handleLoadMore = () => {
     setVisibleCount(prev => prev + PAGE_SIZE);
   };
-
-  const categories = useMemo(() => getCategories(icons), [icons]);
-  const searchResults = useMemo(
-    () => searchIcons(icons, searchQuery, selectedCategory, fileTypeFilter),
-    [icons, searchQuery, selectedCategory, fileTypeFilter]
-  );
-
-  const iconCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    icons.forEach((icon) => {
-      counts[icon.category] = (counts[icon.category] || 0) + 1;
-    });
-    return counts;
-  }, [icons]);
 
   return (
     <div className={`min-h-screen flex flex-col transition-colors duration-300 ${
@@ -914,15 +1352,43 @@ function App() {
               recentChanges={recentChanges}
               viewMode={viewMode}
               selectedIndex={selectedIndex}
-              onSelect={setSelectedIndex}
+              onSelect={handleOpenPreview}
+              multiSelected={multiSelected}
+              onMultiSelect={handleMultiSelect}
               darkMode={darkMode}
               searchQuery={searchQuery}
+              suggestion={suggestion}
+              suggestedCategory={suggestedCategory}
+              onSuggestionClick={handleSearchChange}
+              onCategoryClick={handleCategoryChange}
             />
           )}
         </div>
       </main>
 
       <Footer darkMode={darkMode} />
+
+      {/* Preview Modal */}
+      {previewIndex !== null && searchResults[previewIndex] && (
+        <PreviewModal
+          icon={searchResults[previewIndex].item}
+          onClose={handleClosePreview}
+          onPrevious={handlePreviousPreview}
+          onNext={handleNextPreview}
+          hasPrevious={previewIndex > 0}
+          hasNext={previewIndex < searchResults.length - 1}
+          darkMode={darkMode}
+        />
+      )}
+
+      {/* Floating Action Bar for multi-select */}
+      <FloatingActionBar
+        selectedCount={multiSelected.size}
+        onDownloadZip={handleDownloadZip}
+        onCopyUrls={handleCopyUrls}
+        onClear={handleClearSelection}
+        darkMode={darkMode}
+      />
     </div>
   );
 }

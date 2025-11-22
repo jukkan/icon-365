@@ -211,6 +211,66 @@ export function searchIcons(
   return fuse.search(searchQuery);
 }
 
+// Get search suggestions when no results found
+export function getSearchSuggestions(
+  icons: IconFile[],
+  searchQuery: string,
+  selectedCategory: string | null
+): { suggestion: string | null; suggestedCategory: string | null } {
+  if (!searchQuery.trim()) {
+    return { suggestion: null, suggestedCategory: null };
+  }
+
+  // Try searching all icons with a higher threshold to find closest match
+  const lenientOptions: IFuseOptions<IconFile> = {
+    ...fuseOptions,
+    threshold: 0.6, // More lenient
+  };
+
+  let searchPool = icons;
+  if (selectedCategory) {
+    // If searching within category, also search all icons for suggestions
+    searchPool = icons;
+  }
+
+  const fuse = new Fuse(searchPool, lenientOptions);
+  const results = fuse.search(searchQuery);
+
+  if (results.length > 0) {
+    const topResult = results[0].item;
+    // If the top result is in a different category, suggest that category
+    if (selectedCategory && topResult.category !== selectedCategory) {
+      return {
+        suggestion: topResult.filename,
+        suggestedCategory: topResult.category,
+      };
+    }
+    return {
+      suggestion: topResult.filename,
+      suggestedCategory: null,
+    };
+  }
+
+  // No matches found - suggest a category based on the query
+  const categories = getCategories(icons);
+  const categoryFuse = new Fuse(categories, { threshold: 0.4 });
+  const categoryResults = categoryFuse.search(searchQuery);
+
+  if (categoryResults.length > 0) {
+    return {
+      suggestion: null,
+      suggestedCategory: categoryResults[0].item,
+    };
+  }
+
+  return { suggestion: null, suggestedCategory: null };
+}
+
+// GitHub file URL helper
+export function getGitHubFileUrl(path: string): string {
+  return `https://github.com/loryanstrant/MicrosoftCloudLogos/blob/main/${path}`;
+}
+
 // Recent commits functionality
 interface GitHubCommit {
   sha: string;
