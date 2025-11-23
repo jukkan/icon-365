@@ -438,6 +438,8 @@ function SearchBar({
   onViewModeChange,
   inputRef,
   darkMode,
+  showNewOnly,
+  onShowNewOnlyChange,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -448,6 +450,8 @@ function SearchBar({
   onViewModeChange: (mode: ViewMode) => void;
   inputRef: React.RefObject<HTMLInputElement>;
   darkMode: boolean;
+  showNewOnly: boolean;
+  onShowNewOnlyChange: (value: boolean) => void;
 }) {
   return (
     <div className="space-y-3 animate-slide-up">
@@ -470,6 +474,21 @@ function SearchBar({
       </div>
 
       <div className="flex flex-wrap items-center gap-4">
+        {/* New filter toggle */}
+        <button
+          onClick={() => onShowNewOnlyChange(!showNewOnly)}
+          className={`px-3 py-1 text-sm font-medium rounded-lg transition-colors press-effect ${
+            showNewOnly
+              ? 'bg-green-600 text-white'
+              : darkMode
+              ? 'bg-dark-surface text-dark-text hover:bg-dark-border border border-dark-border'
+              : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300'
+          }`}
+          title={showNewOnly ? 'Showing current icons only' : 'Show all icons including legacy'}
+        >
+          ✨ New
+        </button>
+
         {/* File type filter */}
         <div className="flex items-center gap-2">
           <span className={`text-sm ${darkMode ? 'text-dark-text-secondary' : 'text-gray-600'}`}>Type:</span>
@@ -1230,6 +1249,7 @@ function App() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(urlParams.category);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [fileTypeFilter, setFileTypeFilter] = useState<FileTypeFilter>('all');
+  const [showNewOnly, setShowNewOnly] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
@@ -1250,8 +1270,8 @@ function App() {
   // Compute derived state first (before effects that use them)
   const categories = useMemo(() => getCategories(icons), [icons]);
   const searchResults = useMemo(
-    () => searchIcons(icons, searchQuery, selectedCategory, fileTypeFilter),
-    [icons, searchQuery, selectedCategory, fileTypeFilter]
+    () => searchIcons(icons, searchQuery, selectedCategory, fileTypeFilter, showNewOnly),
+    [icons, searchQuery, selectedCategory, fileTypeFilter, showNewOnly]
   );
 
   const iconCounts = useMemo(() => {
@@ -1437,6 +1457,10 @@ function App() {
     setSearchQuery(query);
     setVisibleCount(PAGE_SIZE);
     setSelectedIndex(-1);
+    // Clear "New" filter when user starts searching to search all icons
+    if (query.trim() && showNewOnly) {
+      setShowNewOnly(false);
+    }
   };
 
   const handleCategoryChange = (category: string | null) => {
@@ -1473,6 +1497,8 @@ function App() {
             onViewModeChange={setViewMode}
             inputRef={searchInputRef}
             darkMode={darkMode}
+            showNewOnly={showNewOnly}
+            onShowNewOnlyChange={setShowNewOnly}
           />
 
           {!loading && !error && (

@@ -21,6 +21,7 @@ export interface IconFile {
   size: number;
   rawUrl: string;
   isLegacy: boolean;
+  isNew: boolean;
   extension: string;
   productName: string;
 }
