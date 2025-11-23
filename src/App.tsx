@@ -36,36 +36,169 @@ function setUrlParams(search: string, category: string | null) {
   window.history.replaceState({}, '', newUrl);
 }
 
-// Header Component with dark mode toggle
-function Header({ darkMode, onToggleDarkMode }: { darkMode: boolean; onToggleDarkMode: () => void }) {
+// Header Component with dark mode toggle and About button
+function Header({ darkMode, onToggleDarkMode, onAboutClick }: { darkMode: boolean; onToggleDarkMode: () => void; onAboutClick: () => void }) {
   return (
     <header className={`${darkMode ? 'bg-dark-surface border-dark-border' : 'bg-white border-gray-200'} border-b px-6 py-4 transition-colors duration-300`}>
       <div className="max-w-7xl mx-auto flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-ms-blue">Icon 365</h1>
           <p className={`text-sm ${darkMode ? 'text-dark-text-secondary' : 'text-gray-600'}`}>
-            Visual browser for Microsoft Cloud Logos community repo
+            Visual browser for{' '}
+            <a
+              href="https://github.com/loryanstrant/MicrosoftCloudLogos"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-ms-blue hover:underline"
+            >
+              Microsoft Cloud Logos
+            </a>
+            {' '}community repo
           </p>
         </div>
-        <button
-          onClick={onToggleDarkMode}
-          className={`p-2 rounded-lg transition-colors ${
-            darkMode ? 'hover:bg-dark-border text-dark-text' : 'hover:bg-gray-100 text-gray-600'
-          }`}
-          title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
-        >
-          {darkMode ? (
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-            </svg>
-          ) : (
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-            </svg>
-          )}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onAboutClick}
+            className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+              darkMode ? 'hover:bg-dark-border text-dark-text' : 'hover:bg-gray-100 text-gray-600'
+            }`}
+          >
+            About
+          </button>
+          <button
+            onClick={onToggleDarkMode}
+            className={`p-2 rounded-lg transition-colors ${
+              darkMode ? 'hover:bg-dark-border text-dark-text' : 'hover:bg-gray-100 text-gray-600'
+            }`}
+            title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            {darkMode ? (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+              </svg>
+            ) : (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+              </svg>
+            )}
+          </button>
+        </div>
       </div>
     </header>
+  );
+}
+
+// About Modal Component
+function AboutModal({ onClose, darkMode }: { onClose: () => void; darkMode: boolean }) {
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div
+        className={`relative w-full max-w-2xl rounded-xl shadow-2xl animate-fade-in ${
+          darkMode ? 'bg-dark-surface' : 'bg-white'
+        }`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Close button */}
+        <button
+          onClick={onClose}
+          className={`absolute top-4 right-4 p-2 rounded-lg z-10 transition-colors ${
+            darkMode ? 'hover:bg-dark-border text-dark-text' : 'hover:bg-gray-100 text-gray-600'
+          }`}
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+
+        {/* Content */}
+        <div className="p-8 space-y-4">
+          <h2 className={`text-xl font-bold ${darkMode ? 'text-dark-text' : 'text-gray-900'}`}>
+            Looking for the latest Microsoft product icons?
+          </h2>
+
+          <div className={`space-y-4 text-sm leading-relaxed ${darkMode ? 'text-dark-text-secondary' : 'text-gray-600'}`}>
+            <p>
+              Microsoft doesn't offer a single place for discovering all the icons (a.k.a. logos) for their products. Luckily, the community has stepped up and addressed this gap.{' '}
+              <a
+                href="https://github.com/loryanstrant"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-ms-blue hover:underline"
+              >
+                Loryan Strant
+              </a>
+              {' '}has published his own collection in the{' '}
+              <a
+                href="https://github.com/loryanstrant/MicrosoftCloudLogos"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-ms-blue hover:underline"
+              >
+                Microsoft Cloud Product Logos on GitHub
+              </a>
+              .
+            </p>
+
+            <p>
+              This site is a vibe coded browser for searching, filtering and previewing the icons from Loryan's repo. Built by{' '}
+              <a
+                href="https://jukkan.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-ms-blue hover:underline"
+              >
+                Jukka Niiranen
+              </a>
+              {' '}and Claude Code. Because everyone should have easy access to up-to-date visuals when referencing apps and services from the Microsoft Cloud.
+            </p>
+
+            <p>
+              Obviously, all the images on this site are the property of Microsoft Corporation. If you plan to use them, please review the guidance on{' '}
+              <a
+                href="https://www.microsoft.com/en-us/legal/intellectualproperty/trademarks"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-ms-blue hover:underline"
+              >
+                Microsoft trademarks and branding guidelines
+              </a>
+              .
+            </p>
+
+            <p>
+              If you want to dig deeper into the history of icons/logos used by Microsoft, have a look at{' '}
+              <a
+                href="https://logos.fandom.com/wiki/Special:Search?scope=internal&navigationSearch=true&query=microsoft"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-ms-blue hover:underline"
+              >
+                Logopedia
+              </a>
+              .
+            </p>
+          </div>
+
+          <div className="pt-4">
+            <button
+              onClick={onClose}
+              className="w-full px-4 py-3 bg-ms-blue text-white rounded-lg hover:bg-ms-blue-dark transition-colors press-effect font-medium"
+            >
+              Start Browsing Icons
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1101,8 +1234,18 @@ function App() {
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const [multiSelected, setMultiSelected] = useState<Set<string>>(new Set());
+  const [showAboutModal, setShowAboutModal] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return !localStorage.getItem('icon365-visited');
+  });
 
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Mark as visited when About modal is closed
+  const handleCloseAbout = useCallback(() => {
+    setShowAboutModal(false);
+    localStorage.setItem('icon365-visited', 'true');
+  }, []);
 
   // Compute derived state first (before effects that use them)
   const categories = useMemo(() => getCategories(icons), [icons]);
@@ -1316,7 +1459,7 @@ function App() {
     <div className={`min-h-screen flex flex-col transition-colors duration-300 ${
       darkMode ? 'bg-dark-bg' : 'bg-gray-50'
     }`}>
-      <Header darkMode={darkMode} onToggleDarkMode={() => setDarkMode(!darkMode)} />
+      <Header darkMode={darkMode} onToggleDarkMode={() => setDarkMode(!darkMode)} onAboutClick={() => setShowAboutModal(true)} />
 
       <main className="flex-1 px-6 py-6">
         <div className="max-w-7xl mx-auto space-y-6">
@@ -1389,6 +1532,11 @@ function App() {
         onClear={handleClearSelection}
         darkMode={darkMode}
       />
+
+      {/* About Modal */}
+      {showAboutModal && (
+        <AboutModal onClose={handleCloseAbout} darkMode={darkMode} />
+      )}
     </div>
   );
 }
