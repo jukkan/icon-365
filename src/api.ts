@@ -26,8 +26,16 @@ function isLegacyIcon(path: string): boolean {
   if (lowerPath.includes('zzlegacy') || lowerPath.includes('legacy')) {
     return true;
   }
-  const yearPattern = /\d{4}-\d{4}/;
-  return yearPattern.test(path);
+  // Check for year range patterns like "2016-2020" or "2020-2025"
+  // Only mark as legacy if the end year is before the current year
+  const yearPattern = /(\d{4})-(\d{4})/;
+  const match = path.match(yearPattern);
+  if (match) {
+    const endYear = parseInt(match[2], 10);
+    const currentYear = new Date().getFullYear();
+    return endYear < currentYear;
+  }
+  return false;
 }
 
 function inferProductName(path: string): string {
