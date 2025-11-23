@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { IconFile } from './types';
-import { fetchIcons, getCategories, searchIcons, SearchResult, fetchRecentChanges, RecentChange, getSearchSuggestions, getGitHubFileUrl } from './api';
+import { fetchIcons, getCategories, searchIcons, SearchResult, fetchRecentChanges, RecentChange, getSearchSuggestions, getGitHubFileUrl, clearCache } from './api';
 import type { FuseResultMatch } from 'fuse.js';
 import JSZip from 'jszip';
 
@@ -37,7 +37,13 @@ function setUrlParams(search: string, category: string | null) {
 }
 
 // Header Component with dark mode toggle and About button
-function Header({ darkMode, onToggleDarkMode, onAboutClick }: { darkMode: boolean; onToggleDarkMode: () => void; onAboutClick: () => void }) {
+function Header({ darkMode, onToggleDarkMode, onAboutClick, onRefresh, isRefreshing }: {
+  darkMode: boolean;
+  onToggleDarkMode: () => void;
+  onAboutClick: () => void;
+  onRefresh: () => void;
+  isRefreshing: boolean;
+}) {
   return (
     <header className={`${darkMode ? 'bg-dark-surface border-dark-border' : 'bg-white border-gray-200'} border-b px-6 py-4 transition-colors duration-300`}>
       <div className="max-w-7xl mx-auto flex items-center justify-between">
@@ -57,6 +63,18 @@ function Header({ darkMode, onToggleDarkMode, onAboutClick }: { darkMode: boolea
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={onRefresh}
+            disabled={isRefreshing}
+            className={`p-2 rounded-lg transition-colors ${
+              darkMode ? 'hover:bg-dark-border text-dark-text' : 'hover:bg-gray-100 text-gray-600'
+            } ${isRefreshing ? 'opacity-50 cursor-not-allowed' : ''}`}
+            title="Refresh data from GitHub"
+          >
+            <svg className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
           <button
             onClick={onAboutClick}
             className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -1347,6 +1365,11 @@ function App() {
     }
   }, []);
 
+  const handleRefresh = useCallback(() => {
+    clearCache();
+    loadIcons();
+  }, [loadIcons]);
+
   useEffect(() => {
     loadIcons();
   }, [loadIcons]);
@@ -1516,7 +1539,7 @@ function App() {
     <div className={`min-h-screen flex flex-col transition-colors duration-300 ${
       darkMode ? 'bg-dark-bg' : 'bg-gray-50'
     }`}>
-      <Header darkMode={darkMode} onToggleDarkMode={() => setDarkMode(!darkMode)} onAboutClick={() => setShowAboutModal(true)} />
+      <Header darkMode={darkMode} onToggleDarkMode={() => setDarkMode(!darkMode)} onAboutClick={() => setShowAboutModal(true)} onRefresh={handleRefresh} isRefreshing={loading} />
 
       <main className="flex-1 px-6 py-6">
         <div className="max-w-7xl mx-auto space-y-6">

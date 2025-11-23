@@ -8,6 +8,11 @@ const CACHE_KEY = 'icon365-cache';
 const COMMITS_CACHE_KEY = 'icon365-commits-cache';
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours in ms
 
+export function clearCache(): void {
+  localStorage.removeItem(CACHE_KEY);
+  localStorage.removeItem(COMMITS_CACHE_KEY);
+}
+
 function isImageFile(path: string): boolean {
   const ext = path.toLowerCase();
   return ext.endsWith('.png') || ext.endsWith('.svg');
