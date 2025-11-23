@@ -926,6 +926,8 @@ function EmptyState({
   onSuggestionClick,
   onCategoryClick,
   darkMode,
+  showNewOnly,
+  onShowNewOnlyChange,
 }: {
   searchQuery: string;
   suggestion: string | null;
@@ -933,8 +935,21 @@ function EmptyState({
   onSuggestionClick: (term: string) => void;
   onCategoryClick: (category: string) => void;
   darkMode: boolean;
+  showNewOnly?: boolean;
+  onShowNewOnlyChange?: (value: boolean) => void;
 }) {
   const defaultSuggestions = ['Teams', 'Azure', 'Office', 'SharePoint', 'OneDrive', 'Outlook'];
+
+  // Determine the appropriate message
+  const getMessage = () => {
+    if (searchQuery) {
+      return `No icons found for "${searchQuery}"`;
+    }
+    if (showNewOnly) {
+      return 'No current icons in this selection';
+    }
+    return 'No icons found';
+  };
 
   return (
     <div className="text-center py-12 animate-fade-in">
@@ -942,8 +957,20 @@ function EmptyState({
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
       </svg>
       <p className={`text-lg font-medium mb-2 ${darkMode ? 'text-dark-text' : 'text-gray-700'}`}>
-        No icons found for "{searchQuery}"
+        {getMessage()}
       </p>
+
+      {/* Show option to disable New filter if it's causing empty results */}
+      {showNewOnly && !searchQuery && onShowNewOnlyChange && (
+        <p className={`mb-3 ${darkMode ? 'text-dark-text-secondary' : 'text-gray-500'}`}>
+          <button
+            onClick={() => onShowNewOnlyChange(false)}
+            className="text-ms-blue hover:underline font-medium"
+          >
+            Show all icons including legacy
+          </button>
+        </p>
+      )}
 
       {/* Smart suggestions */}
       {suggestion && (
@@ -1080,6 +1107,8 @@ function IconGrid({
   suggestedCategory,
   onSuggestionClick,
   onCategoryClick,
+  showNewOnly,
+  onShowNewOnlyChange,
 }: {
   results: SearchResult[];
   visibleCount: number;
@@ -1096,6 +1125,8 @@ function IconGrid({
   suggestedCategory: string | null;
   onSuggestionClick: (term: string) => void;
   onCategoryClick: (category: string) => void;
+  showNewOnly: boolean;
+  onShowNewOnlyChange: (value: boolean) => void;
 }) {
   if (results.length === 0) {
     return (
@@ -1106,6 +1137,8 @@ function IconGrid({
         onSuggestionClick={onSuggestionClick}
         onCategoryClick={onCategoryClick}
         darkMode={darkMode}
+        showNewOnly={showNewOnly}
+        onShowNewOnlyChange={onShowNewOnlyChange}
       />
     );
   }
@@ -1530,6 +1563,8 @@ function App() {
               suggestedCategory={suggestedCategory}
               onSuggestionClick={handleSearchChange}
               onCategoryClick={handleCategoryChange}
+              showNewOnly={showNewOnly}
+              onShowNewOnlyChange={setShowNewOnly}
             />
           )}
         </div>
