@@ -38,24 +38,6 @@ function isLegacyIcon(path: string): boolean {
   return false;
 }
 
-function isNewIcon(path: string): boolean {
-  const lowerPath = path.toLowerCase();
-  // Explicitly legacy icons are not new
-  if (lowerPath.includes('zzlegacy') || lowerPath.includes('legacy')) {
-    return false;
-  }
-  // Check for year range patterns - new if end year includes current year
-  const yearPattern = /(\d{4})-(\d{4})/;
-  const match = path.match(yearPattern);
-  if (match) {
-    const endYear = parseInt(match[2], 10);
-    const currentYear = new Date().getFullYear();
-    return endYear >= currentYear;
-  }
-  // Icons without year ranges are considered current/new
-  return true;
-}
-
 function inferProductName(path: string): string {
   // Extract meaningful product name from path
   const parts = path.split('/');
@@ -75,14 +57,15 @@ function parseIconFiles(tree: GitHubTreeResponse): IconFile[] {
       const filename = pathParts[pathParts.length - 1];
       const extension = filename.split('.').pop()?.toLowerCase() || '';
 
+      const isLegacy = isLegacyIcon(item.path);
       return {
         path: item.path,
         filename,
         category: detectCategory(item.path),
         size: item.size || 0,
         rawUrl: `${RAW_CONTENT_BASE}${item.path}`,
-        isLegacy: isLegacyIcon(item.path),
-        isNew: isNewIcon(item.path),
+        isLegacy,
+        isNew: !isLegacy,
         extension,
         productName: inferProductName(item.path),
       };
