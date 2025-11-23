@@ -38,6 +38,24 @@ function isLegacyIcon(path: string): boolean {
   return false;
 }
 
+function isNewIcon(path: string): boolean {
+  const lowerPath = path.toLowerCase();
+  // Explicitly legacy icons are not new
+  if (lowerPath.includes('zzlegacy') || lowerPath.includes('legacy')) {
+    return false;
+  }
+  // Check for year range patterns - new if end year includes current year
+  const yearPattern = /(\d{4})-(\d{4})/;
+  const match = path.match(yearPattern);
+  if (match) {
+    const endYear = parseInt(match[2], 10);
+    const currentYear = new Date().getFullYear();
+    return endYear >= currentYear;
+  }
+  // Icons without year ranges are considered current/new
+  return true;
+}
+
 function inferProductName(path: string): string {
   // Extract meaningful product name from path
   const parts = path.split('/');
@@ -64,6 +82,7 @@ function parseIconFiles(tree: GitHubTreeResponse): IconFile[] {
         size: item.size || 0,
         rawUrl: `${RAW_CONTENT_BASE}${item.path}`,
         isLegacy: isLegacyIcon(item.path),
+        isNew: isNewIcon(item.path),
         extension,
         productName: inferProductName(item.path),
       };
@@ -199,7 +218,8 @@ export function searchIcons(
   icons: IconFile[],
   searchQuery: string,
   selectedCategory: string | null,
-  fileTypeFilter: 'all' | 'png' | 'svg' = 'all'
+  fileTypeFilter: 'all' | 'png' | 'svg' = 'all',
+  showNewOnly: boolean = false
 ): SearchResult[] {
   let filtered = icons;
 
@@ -211,12 +231,33 @@ export function searchIcons(
     filtered = filtered.filter(icon => icon.extension === fileTypeFilter);
   }
 
+  if (showNewOnly) {
+    filtered = filtered.filter(icon => icon.isNew);
+  }
+
   if (!searchQuery.trim()) {
-    return filtered.map(item => ({ item }));
+    // Sort by isNew first (new icons on top), then alphabetically
+    const sorted = [...filtered].sort((a, b) => {
+      if (a.isNew !== b.isNew) {
+        return a.isNew ? -1 : 1;
+      }
+      return a.filename.localeCompare(b.filename);
+    });
+    return sorted.map(item => ({ item }));
   }
 
   const fuse = new Fuse(filtered, fuseOptions);
-  return fuse.search(searchQuery);
+  const results = fuse.search(searchQuery);
+
+  // Sort results: new icons first within similar relevance scores
+  return results.sort((a, b) => {
+    // If scores are similar (within 0.1), prioritize new icons
+    const scoreDiff = Math.abs((a.score || 0) - (b.score || 0));
+    if (scoreDiff < 0.1 && a.item.isNew !== b.item.isNew) {
+      return a.item.isNew ? -1 : 1;
+    }
+    return 0; // Keep original relevance order
+  });
 }
 
 // Get search suggestions when no results found
