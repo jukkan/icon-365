@@ -6,11 +6,13 @@ const GITHUB_COMMITS_URL = 'https://api.github.com/repos/loryanstrant/MicrosoftC
 const RAW_CONTENT_BASE = 'https://raw.githubusercontent.com/loryanstrant/MicrosoftCloudLogos/main/';
 const CACHE_KEY = 'icon365-cache';
 const COMMITS_CACHE_KEY = 'icon365-commits-cache';
-const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours in ms
+const CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days - longer TTL since we use conditional requests
+const FORCE_REVALIDATE_KEY = 'icon365-force-revalidate';
 
 export function clearCache(): void {
-  localStorage.removeItem(CACHE_KEY);
-  localStorage.removeItem(COMMITS_CACHE_KEY);
+  // Mark cache for revalidation instead of deleting
+  // This allows us to use conditional requests (If-None-Match)
+  localStorage.setItem(FORCE_REVALIDATE_KEY, 'true');
 }
 
 function isImageFile(path: string): boolean {
@@ -77,54 +79,60 @@ function parseIconFiles(tree: GitHubTreeResponse): IconFile[] {
     });
 }
 
-function getCachedData(): CachedData | null {
+function getCachedData(): { data: CachedData | null; needsRevalidation: boolean } {
   try {
+    const forceRevalidate = localStorage.getItem(FORCE_REVALIDATE_KEY) === 'true';
     const cached = localStorage.getItem(CACHE_KEY);
-    if (!cached) return null;
+
+    if (!cached) return { data: null, needsRevalidation: true };
 
     const data: CachedData = JSON.parse(cached);
     const now = Date.now();
+    const isExpired = now - data.timestamp > CACHE_TTL;
 
-    if (now - data.timestamp > CACHE_TTL) {
-      localStorage.removeItem(CACHE_KEY);
-      return null;
-    }
-
-    return data;
+    // Return data but mark for revalidation if expired or forced
+    return {
+      data,
+      needsRevalidation: isExpired || forceRevalidate
+    };
   } catch {
-    return null;
+    return { data: null, needsRevalidation: true };
   }
 }
 
-function setCachedData(icons: IconFile[]): void {
+function setCachedData(icons: IconFile[], etag?: string): void {
   try {
     const data: CachedData = {
       timestamp: Date.now(),
       icons,
+      etag,
     };
     localStorage.setItem(CACHE_KEY, JSON.stringify(data));
+    // Clear force revalidate flag
+    localStorage.removeItem(FORCE_REVALIDATE_KEY);
   } catch (e) {
     console.warn('Failed to cache data:', e);
   }
 }
 
-async function fetchWithRetry(url: string, maxRetries = 3): Promise<Response> {
+async function fetchWithRetry(url: string, options?: RequestInit, maxRetries = 3): Promise<Response> {
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      const response = await fetch(url);
+      const response = await fetch(url, options);
 
-      if (response.ok) {
+      // 304 Not Modified is a success for conditional requests
+      if (response.ok || response.status === 304) {
         return response;
       }
 
       // Don't retry on client errors (4xx) except rate limiting
       if (response.status >= 400 && response.status < 500 && response.status !== 429) {
-        throw new Error(`GitHub API error: ${response.status} ${response.statusText}`);
+        throw new Error(`GitHub API error: ${response.status}`);
       }
 
-      lastError = new Error(`GitHub API error: ${response.status} ${response.statusText}`);
+      lastError = new Error(`GitHub API error: ${response.status}`);
     } catch (e) {
       lastError = e instanceof Error ? e : new Error('Network error');
     }
@@ -141,27 +149,57 @@ async function fetchWithRetry(url: string, maxRetries = 3): Promise<Response> {
 }
 
 export async function fetchIcons(): Promise<IconFile[]> {
-  // Check cache first
-  const cached = getCachedData();
-  if (cached) {
+  const { data: cached, needsRevalidation } = getCachedData();
+
+  // If we have valid cached data and don't need revalidation, use it
+  if (cached && !needsRevalidation) {
     console.log('Using cached icon data');
     logCategoryCounts(cached.icons);
     return cached.icons;
   }
 
-  console.log('Fetching icons from GitHub API...');
+  // Prepare conditional request headers if we have cached data with ETag
+  const headers: HeadersInit = {};
+  if (cached?.etag) {
+    headers['If-None-Match'] = cached.etag;
+    console.log('Checking if data has changed (conditional request)...');
+  } else {
+    console.log('Fetching icons from GitHub API...');
+  }
 
-  const response = await fetchWithRetry(GITHUB_API_URL);
-  const data: GitHubTreeResponse = await response.json();
-  const icons = parseIconFiles(data);
+  try {
+    const response = await fetchWithRetry(GITHUB_API_URL, { headers });
 
-  // Cache the results
-  setCachedData(icons);
+    // 304 Not Modified - use cached data
+    if (response.status === 304) {
+      console.log('Data unchanged, using cached version');
+      // Update timestamp to extend cache validity
+      if (cached) {
+        setCachedData(cached.icons, cached.etag);
+      }
+      return cached?.icons || [];
+    }
 
-  console.log(`Fetched ${icons.length} icons`);
-  logCategoryCounts(icons);
+    // New data received
+    const data: GitHubTreeResponse = await response.json();
+    const icons = parseIconFiles(data);
+    const etag = response.headers.get('ETag') || undefined;
 
-  return icons;
+    // Cache the results with ETag
+    setCachedData(icons, etag);
+
+    console.log(`Fetched ${icons.length} icons`);
+    logCategoryCounts(icons);
+
+    return icons;
+  } catch (error) {
+    // If fetch fails but we have cached data, return it
+    if (cached) {
+      console.warn('Fetch failed, using cached data:', error);
+      return cached.icons;
+    }
+    throw error;
+  }
 }
 
 function logCategoryCounts(icons: IconFile[]): void {

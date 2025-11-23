@@ -34,4 +34,5 @@ export interface CategoryCount {
 export interface CachedData {
   timestamp: number;
   icons: IconFile[];
+  etag?: string;
 }
