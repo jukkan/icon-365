@@ -4,7 +4,7 @@ A visual browser for [Loryan Strant's Microsoft Cloud Logos](https://github.com/
 
 **URL**: https://icons.jukkan.com
 
-![Icon 365 - New icons in Power Platform category](https://raw.githubusercontent.com/jukkan/icon-365/main/public/Icon%20365%20-%20new%20icons%20in%20Power%20Platform%20category.png)
+![Icon 365 - New icons in Power Platform category](https://github.com/jukkan/icon-365/blob/main/public/Icon%20365%20-%20new%20icons%20in%20Power%20Platform%20category.png)
 
 ## Features
 
