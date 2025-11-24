@@ -245,7 +245,8 @@ export function searchIcons(
   searchQuery: string,
   selectedCategory: string | null,
   fileTypeFilter: 'all' | 'png' | 'svg' = 'all',
-  showNewOnly: boolean = false
+  showNewOnly: boolean = false,
+  recentChanges: Map<string, RecentChange> = new Map()
 ): SearchResult[] {
   let filtered = icons;
 
@@ -258,7 +259,7 @@ export function searchIcons(
   }
 
   if (showNewOnly) {
-    filtered = filtered.filter(icon => icon.isNew);
+    filtered = filtered.filter(icon => recentChanges.has(icon.path));
   }
 
   if (!searchQuery.trim()) {
