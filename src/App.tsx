@@ -6,7 +6,7 @@ import JSZip from 'jszip';
 
 const PAGE_SIZE = 50;
 
-type ViewMode = 'grid' | 'list' | 'compare';
+type ViewMode = 'grid' | 'list';
 type FileTypeFilter = 'all' | 'png' | 'svg';
 
 // Dark mode helpers
@@ -536,7 +536,6 @@ function SearchBar({
             {[
               { mode: 'grid' as ViewMode, icon: 'M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z' },
               { mode: 'list' as ViewMode, icon: 'M4 6h16M4 12h16M4 18h16' },
-              { mode: 'compare' as ViewMode, icon: 'M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3' },
             ].map(({ mode, icon }) => (
               <button
                 key={mode}
@@ -1042,72 +1041,6 @@ function EmptyState({
   );
 }
 
-// Compare View
-function CompareView({ results, darkMode }: { results: SearchResult[]; recentChanges: Map<string, RecentChange>; darkMode: boolean }) {
-  const [selected, setSelected] = useState<string[]>([]);
-
-  const toggleSelect = (path: string) => {
-    setSelected(prev =>
-      prev.includes(path)
-        ? prev.filter(p => p !== path)
-        : prev.length < 2
-        ? [...prev, path]
-        : [prev[1], path]
-    );
-  };
-
-  const selectedIcons = selected
-    .map(path => results.find(r => r.item.path === path))
-    .filter((r): r is SearchResult => !!r);
-
-  return (
-    <div className="space-y-6">
-      <div className={`rounded-lg border p-4 ${darkMode ? 'bg-dark-surface border-dark-border' : 'bg-white border-gray-200'}`}>
-        <p className={`text-sm mb-4 ${darkMode ? 'text-dark-text-secondary' : 'text-gray-600'}`}>
-          Select two icons to compare (click to select)
-        </p>
-        {selectedIcons.length === 2 && (
-          <div className="grid grid-cols-2 gap-8">
-            {selectedIcons.map((result) => (
-              <div key={result.item.path} className="text-center">
-                <div className={`aspect-square rounded-lg flex items-center justify-center mb-3 p-4 ${darkMode ? 'bg-dark-border' : 'bg-gray-50'}`}>
-                  <img src={result.item.rawUrl} alt={result.item.filename} className="max-w-full max-h-full object-contain" />
-                </div>
-                <p className={`font-medium text-sm ${darkMode ? 'text-dark-text' : 'text-gray-900'}`}>{result.item.filename}</p>
-                <p className={`text-xs ${darkMode ? 'text-dark-text-secondary' : 'text-gray-500'}`}>{result.item.path}</p>
-                <p className={`text-xs mt-1 ${darkMode ? 'text-dark-text-secondary' : 'text-gray-400'}`}>
-                  {(result.item.size / 1024).toFixed(1)} KB • {result.item.extension.toUpperCase()}
-                </p>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-        {results.slice(0, 50).map((result) => (
-          <div
-            key={result.item.path}
-            onClick={() => toggleSelect(result.item.path)}
-            className={`p-2 rounded-lg border cursor-pointer transition-all duration-200 ${
-              selected.includes(result.item.path)
-                ? 'border-ms-blue bg-blue-50 dark:bg-blue-900/20'
-                : darkMode
-                ? 'border-dark-border hover:border-dark-text-secondary'
-                : 'border-gray-200 hover:border-gray-300'
-            }`}
-          >
-            <div className={`aspect-square flex items-center justify-center rounded mb-1 ${darkMode ? 'bg-dark-border' : 'bg-gray-50'}`}>
-              <img src={result.item.rawUrl} alt={result.item.filename} className="max-w-full max-h-full object-contain" loading="lazy" />
-            </div>
-            <p className={`text-xs truncate text-center ${darkMode ? 'text-dark-text' : 'text-gray-700'}`}>{result.item.filename}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // Icon Grid
 function IconGrid({
   results,
@@ -1159,10 +1092,6 @@ function IconGrid({
         onShowNewOnlyChange={onShowNewOnlyChange}
       />
     );
-  }
-
-  if (viewMode === 'compare') {
-    return <CompareView results={results} recentChanges={recentChanges} darkMode={darkMode} />;
   }
 
   const visibleResults = results.slice(0, visibleCount);
@@ -1321,8 +1250,8 @@ function App() {
   // Compute derived state first (before effects that use them)
   const categories = useMemo(() => getCategories(icons), [icons]);
   const searchResults = useMemo(
-    () => searchIcons(icons, searchQuery, selectedCategory, fileTypeFilter, showNewOnly),
-    [icons, searchQuery, selectedCategory, fileTypeFilter, showNewOnly]
+    () => searchIcons(icons, searchQuery, selectedCategory, fileTypeFilter, showNewOnly, recentChanges),
+    [icons, searchQuery, selectedCategory, fileTypeFilter, showNewOnly, recentChanges]
   );
 
   const iconCounts = useMemo(() => {
