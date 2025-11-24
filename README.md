@@ -4,7 +4,7 @@ A visual browser for [Loryan Strant's Microsoft Cloud Logos](https://github.com/
 
 **URL**: https://icons.jukkan.com
 
-![Icon 365 - New icons in Power Platform category](https://github.com/jukkan/icon-365/blob/main/public/Icon%20365%20-%20new%20icons%20in%20Power%20Platform%20category.png)
+[![Icon 365 - New icons in Power Platform category](https://github.com/jukkan/icon-365/blob/main/public/Icon%20365%20-%20new%20icons%20in%20Power%20Platform%20category.png)](https://icons.jukkan.com/)
 
 ## Features
 
@@ -36,4 +36,4 @@ Icon 365 fetches data from the GitHub API and caches it in browser localStorage:
 - **Recent Changes**: Fetches last 30 days of commits to identify newly added/modified icons (marked with "NEW" badge)
 - **Fallback**: Returns cached data if network requests fail
 
-Data refreshes automatically when cache expires or manually via the refresh button. The app processes ~1000+ icons across 10+ categories from the source repository.
+Data refreshes automatically when cache expires or manually via the refresh button. The app processes ~2000+ icons across 10+ categories from the source repository.
