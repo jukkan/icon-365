@@ -220,6 +220,90 @@ function AboutModal({ onClose, darkMode }: { onClose: () => void; darkMode: bool
   );
 }
 
+// Filter Notification Component - Shows when "New" filter is auto-disabled
+function FilterNotification({
+  show,
+  action,
+  onDismiss,
+  onReEnable,
+  darkMode,
+}: {
+  show: boolean;
+  action: 'search' | 'category' | null;
+  onDismiss: () => void;
+  onReEnable: () => void;
+  darkMode: boolean;
+}) {
+  if (!show || !action) return null;
+
+  const message = action === 'search'
+    ? 'Showing all icons to help you search. The "New" filter has been temporarily disabled.'
+    : 'Showing all icons in this category. The "New" filter has been temporarily disabled.';
+
+  return (
+    <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 max-w-lg w-full px-4 animate-slide-down">
+      <div className={`rounded-lg shadow-2xl border-2 p-4 ${
+        darkMode
+          ? 'bg-dark-surface border-ms-blue text-dark-text'
+          : 'bg-white border-ms-blue text-gray-900'
+      }`}>
+        <div className="flex items-start gap-3">
+          {/* Info icon */}
+          <div className="flex-shrink-0 mt-0.5">
+            <svg className="w-5 h-5 text-ms-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+
+          {/* Message */}
+          <div className="flex-1 min-w-0">
+            <p className={`text-sm ${darkMode ? 'text-dark-text' : 'text-gray-900'}`}>
+              {message}
+            </p>
+            <p className={`text-xs mt-1 ${darkMode ? 'text-dark-text-secondary' : 'text-gray-600'}`}>
+              You can re-enable it anytime by clicking the "✨ New" button.
+            </p>
+
+            {/* Actions */}
+            <div className="flex items-center gap-2 mt-3">
+              <button
+                onClick={onReEnable}
+                className="px-3 py-1.5 text-sm bg-ms-blue text-white rounded-lg hover:bg-ms-blue-dark transition-colors press-effect font-medium"
+              >
+                Re-enable Filter
+              </button>
+              <button
+                onClick={onDismiss}
+                className={`px-3 py-1.5 text-sm rounded-lg transition-colors press-effect ${
+                  darkMode
+                    ? 'text-dark-text-secondary hover:bg-dark-border'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+
+          {/* Close button */}
+          <button
+            onClick={onDismiss}
+            className={`flex-shrink-0 p-1 rounded transition-colors ${
+              darkMode
+                ? 'text-dark-text-secondary hover:bg-dark-border'
+                : 'text-gray-400 hover:bg-gray-100'
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Preview Modal Component
 function PreviewModal({
   icon,
@@ -1317,6 +1401,10 @@ function App() {
     return !localStorage.getItem('icon365-visited');
   });
 
+  // Filter notification state - tracks when "New" filter is auto-disabled
+  const [showFilterNotification, setShowFilterNotification] = useState(false);
+  const [filterNotificationAction, setFilterNotificationAction] = useState<'search' | 'category' | null>(null);
+
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Mark as visited when About modal is closed
@@ -1520,8 +1608,15 @@ function App() {
     setSearchQuery(query);
     setVisibleCount(PAGE_SIZE);
     setSelectedIndex(-1);
-    // Clear "New" filter when user starts searching to search all icons
+
+    // Auto-disable "New" filter when user starts searching to search all icons
     if (query.trim() && showNewOnly) {
+      // Check if notification has been dismissed before (stored in localStorage)
+      const dismissed = localStorage.getItem('icon365-filter-notification-dismissed');
+      if (!dismissed) {
+        setShowFilterNotification(true);
+        setFilterNotificationAction('search');
+      }
       setShowNewOnly(false);
     }
   };
@@ -1530,6 +1625,18 @@ function App() {
     setSelectedCategory(category);
     setVisibleCount(PAGE_SIZE);
     setSelectedIndex(-1);
+
+    // Auto-disable "New" filter when selecting a specific category
+    // to avoid confusion when users see no results
+    if (category !== null && showNewOnly) {
+      // Check if notification has been dismissed before (stored in localStorage)
+      const dismissed = localStorage.getItem('icon365-filter-notification-dismissed');
+      if (!dismissed) {
+        setShowFilterNotification(true);
+        setFilterNotificationAction('category');
+      }
+      setShowNewOnly(false);
+    }
   };
 
   const handleFileTypeChange = (filter: FileTypeFilter) => {
@@ -1542,11 +1649,35 @@ function App() {
     setVisibleCount(prev => prev + PAGE_SIZE);
   };
 
+  // Filter notification handlers
+  const handleDismissFilterNotification = useCallback(() => {
+    setShowFilterNotification(false);
+    setFilterNotificationAction(null);
+    // Remember that user has seen and dismissed the notification
+    localStorage.setItem('icon365-filter-notification-dismissed', 'true');
+  }, []);
+
+  const handleReEnableFilter = useCallback(() => {
+    setShowNewOnly(true);
+    setShowFilterNotification(false);
+    setFilterNotificationAction(null);
+    // Don't set dismissed flag - allow notification to show again if filter is auto-disabled
+  }, []);
+
   return (
     <div className={`min-h-screen flex flex-col transition-colors duration-300 ${
       darkMode ? 'bg-dark-bg' : 'bg-gray-50'
     }`}>
       <Header darkMode={darkMode} onToggleDarkMode={() => setDarkMode(!darkMode)} onAboutClick={() => setShowAboutModal(true)} onRefresh={handleRefresh} isRefreshing={loading} />
+
+      {/* Filter Notification */}
+      <FilterNotification
+        show={showFilterNotification}
+        action={filterNotificationAction}
+        onDismiss={handleDismissFilterNotification}
+        onReEnable={handleReEnableFilter}
+        darkMode={darkMode}
+      />
 
       <main className="flex-1 px-6 py-6">
         <div className="max-w-7xl mx-auto space-y-6">
